@@ -7541,7 +7541,8 @@ void EndPair() {
     XrCompositionLayerQuad overlayMap{XR_TYPE_COMPOSITION_LAYER_QUAD};
     if(interactionVisible&&OverlayMapOn()&&overlayMapEye.copied&&!interactionOutput.wheel){
         const auto q=Q(head.orientation);
-        const auto p=V(head.position)+math::Rotate(q,{0,0,-1.5f});
+        const float height=vrsettings::Read().values[settings::OverlayMapHeight]*.01f;
+        const auto p=V(head.position)+math::Rotate(q,{0,height,-1.5f});
         const float size=.85f*vrsettings::Read().values[settings::OverlayMapScale]*.01f;
         motionQuad(overlayMap,XrPose({p,q}),size,size,{{0,0},{int32_t(mapSide),int32_t(mapSide)}},overlayMapEye.chain);
     }

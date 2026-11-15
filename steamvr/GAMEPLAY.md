@@ -3458,3 +3458,7 @@ and uses settings rather than a controller gesture. **Overlay map opacity**
 defaults to 45% (0-100%, in 5% steps). **Overlay map scale** defaults to 100%
 (25-200%, in 5% steps); this changes the panel size, not the explored-map zoom.
 The wrist and held map remain available with their existing controls.
+
+**Overlay map height** moves the map vertically relative to your view. Positive
+values raise it; 0 cm preserves the centered position. Adjust from -50 to +100 cm
+in 5 cm steps and select **Apply** to save.

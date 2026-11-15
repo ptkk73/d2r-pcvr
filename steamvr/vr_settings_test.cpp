@@ -1055,12 +1055,12 @@ int main(int argc,char** argv){
         Check(u.Click({Kind::Apply}).changed==(ChangeMask{1}<<LeftHandedSticks),"with Left-handed saved, Apply saves only the sticks' switch");
     }
     {
-        Check(Defaults()[OverlayMapEnabled]==0&&Defaults()[OverlayMapOpacity]==45&&Defaults()[OverlayMapScale]==100,
+        Check(Defaults()[OverlayMapEnabled]==0&&Defaults()[OverlayMapOpacity]==45&&Defaults()[OverlayMapScale]==100&&Defaults()[OverlayMapHeight]==0,
               "overlay map starts off with 45 percent opacity and original size");
         Check(Normalize(OverlayMapOpacity,-5)==0&&Normalize(OverlayMapOpacity,105)==100&&
-              Normalize(OverlayMapScale,0)==25&&Normalize(OverlayMapScale,250)==200,
+              Normalize(OverlayMapScale,0)==25&&Normalize(OverlayMapScale,250)==200&&Normalize(OverlayMapHeight,-100)==-50&&Normalize(OverlayMapHeight,150)==100,
               "overlay map opacity and scale stay within supported bounds");
-        for(Key key:{OverlayMapEnabled,OverlayMapOpacity,OverlayMapScale}){
+        for(Key key:{OverlayMapEnabled,OverlayMapOpacity,OverlayMapScale,OverlayMapHeight}){
             const auto* row=content::RowOf(key);
             Check(row&&row->page==View::OverlayMap,"overlay controls have their own page");
         }
