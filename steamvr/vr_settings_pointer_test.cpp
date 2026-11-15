@@ -374,7 +374,7 @@ static void RailTests(){
      Check(r&&r->rect.y==L::TabY+9*L::TabPitch,"Interface's row with Gameplay open");
      const float ix=float(r->rect.x+r->rect.w/2),iy=float(r->rect.y+r->rect.h/2);
      L::Press(n,row(Group::Interface),0);
-     Check(L::HitTest(L::Build(n,{},{}),ix,iy)==tab(View::Warnings),"Interface's last page slides under the laser: the guard covers it");}
+     Check(L::HitTest(L::Build(n,{},{}),ix,iy)==tab(View::Outlines),"Interface page slides under the laser: the guard covers it");}
     // The guard is for rail rows only, its edge is RailGuardMs, and a view change's Reset keeps it.
     {layout=L::Build(m,{},{});P::PointerFilter g;uint64_t t=5000;g.GuardRail(t);g.Reset();
      const L::Element* close=nullptr;for(const auto& e:layout.elements)if(e.role==L::Role::FooterClose)close=&e;

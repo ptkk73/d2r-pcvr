@@ -217,12 +217,14 @@ float4 PS(float4 position:SV_Position):SV_Target {
         // A narrow aged-bronze bevel and inset corner cuts. The entire native
         // map fits inside the frame, including markers at its outer edges.
         float2 corner=min(pixel,float(mapSide)-pixel)/bevel;
+        if(!(mapFlags&32)) {
         if(edge<1)return float4(.012,.009,.006,1);
         if(edge<3)return float4(.24,.16,.065,1);
         if(edge<5)return float4(.055,.033,.015,1);
         if(edge<7)return float4(.012,.009,.006,1);
         if(max(corner.x,corner.y)<20&&abs(corner.x+corner.y-26)<1.4)
             return float4(.34,.24,.11,1);
+        }
         uint w,h;nativeUi.GetDimensions(w,h);
         mapSize=float2(w,h);
         if(mapSpan>0) {

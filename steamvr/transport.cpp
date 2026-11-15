@@ -912,6 +912,9 @@ struct Eye {
 std::array<Eye,2> eyes;
 Eye uiEye;
 Eye mapEye;
+Eye overlayMapEye;
+bool OverlayMapOn(){return vrsettings::Read().values[settings::OverlayMapEnabled]>.5f;}
+float OverlayMapOpacity(){return vrsettings::Read().values[settings::OverlayMapOpacity]*.01f;}
 // The wrist map's view: Isometric (the game's) or Top-down, and on the
 // top-down map whether it turns with you. Configured under VR Settings > Interface > Wrist.
 bool MapTopDownOn(){return settings::MapViewTopDown(vrsettings::Read().values[settings::MapTopDown]);}
@@ -1030,6 +1033,7 @@ bool journalMode=false,spatialMode=false,workspacePlaced=false,opaqueMenuMode=fa
 bool npcChoicesMode=false;
 UiBlit uiBlit;
 UiBlit mapBlit; // Own descriptors: native menu and map copies may share a frame.
+UiBlit overlayMapBlit; // Separate descriptors and marker resources from the wrist map.
 potions::Models potionModels;
 potions::Scene potionScene;
 // Bone Armor grafted onto both forearms (bone_graft.h): [render] bone_armor_graft.
@@ -4831,7 +4835,7 @@ void Input() {
             mapZoomLogged=false;
         }
     }
-    gamestate::MenuMap(mapSupported&&(interaction::MapWanted(interactionInput,interactionOutput,interactionInput.at)||floatMapWant));
+    gamestate::MenuMap(mapSupported&&(interaction::MapWanted(interactionInput,interactionOutput,interactionInput.at)||floatMapWant||OverlayMapOn()));
     if(interactionOutput.inventory&&toggleMenus)toggleMenus();
     if(handOutput.wheel>=0&&!interactionOutput.wheel){handControls.Close();handOutput={};}
     if(interactionOutput.cancelPending)interactionstate::Cancel();
@@ -6369,7 +6373,7 @@ bool Begin(bool pair=false) {
     // menu's boxes cut dark holes into the scene there (where the board's strip is drawn by the game).
     uiworld::ShowWorldBehindMenu(leatherShown.load()||campfirePointer.load());
     spatialMode=spatial;journalMode=book;npcChoicesMode=npc;opaqueMenuMode=opaque;upperBandMenuMode=spatial&&gamestate::UpperBandMenuOpen();uiEye.copied=false;
-    mapEye.copied=false;hud::MapFrame();
+    mapEye.copied=false;overlayMapEye.copied=false;hud::MapFrame();
     // The campfire draws no pair (no BeginEye): this frame begins at the present, after the menu
     // was drawn and copied - the copy is kept (-1), not dropped as a new pair's would be.
     hud::UiFrame(spatialMode,!journalMode,campfirePointer.load()?-1:0);
@@ -6926,14 +6930,16 @@ bool Copy(ID3D12Resource* src,Eye& e,reshade::api::command_queue* rq) {
     timing.copySubmitMs[eye]+=Milliseconds()-copyStart;
     e.copied=true;return true;
 }
-bool CopyMap(reshade::api::command_queue* rq) {
-    if(!mapSupported||mapEye.copied||!(interaction::MapWanted(interactionInput,interactionOutput,GetTickCount64())||floatMapWant))return true;
+bool CopyMap(reshade::api::command_queue* rq,bool overlay=false) {
+    auto& e=overlay?overlayMapEye:mapEye;
+    auto& blit=overlay?overlayMapBlit:mapBlit;
+    if(!mapSupported||e.copied||!(overlay?OverlayMapOn()&&!spatialMode:
+       interaction::MapWanted(interactionInput,interactionOutput,GetTickCount64())||floatMapWant))return true;
     if(swapchainsShort&&spatialMode)return true;   // the native menus' panel may need its surface: no map while they are open
     uint32_t w=0,h=0;
     bool fullMap=false;float drawnZoom=0;   // Map view = Full map: the share is the full map's box, drawn at that game zoom
     auto* src=reinterpret_cast<ID3D12Resource*>(hud::MapTexture(w,h,&fullMap,&drawnZoom));
     if(!src||!w||!h)return true; // No current map; never display the last area's texture.
-    auto& e=mapEye;
     if(!e.chain) {
         if(GetTickCount64()<mapRetryAt)return true;   // after a failure: again a little later
         // A step that failed: what and why, the half-made surface gone; true, as the eyes' copies go on.
@@ -6947,6 +6953,7 @@ bool CopyMap(reshade::api::command_queue* rq) {
             if(mapFailures>=MapAttempts)mapSupported=false;else mapRetryAt=GetTickCount64()+MapRetryMs;
             return true;
         };
+        if(overlay&&!blit.Initialize(device.Get(),&Say))return failed("initializing overlay renderer",-1);
         // The UI panel's usage, which OFXR Bridge has always let through.
         XrSwapchainCreateInfo c{XR_TYPE_SWAPCHAIN_CREATE_INFO};c.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT|XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
         c.format=DXGI_FORMAT_R16G16B16A16_FLOAT;c.width=c.height=mapSide;c.sampleCount=c.faceCount=c.arraySize=c.mipCount=1;
@@ -6982,7 +6989,8 @@ bool CopyMap(reshade::api::command_queue* rq) {
     if(FAILED(e.allocator->Reset())||FAILED(e.commands->Reset(e.allocator.Get(),nullptr)))return false;
     // The heading arrow over the hero (while the compass knows the heading),
     // the map turning with you (top-down only), and top-down itself.
-    const uint32_t flags=(compassFrame?1u:0u)|(compassFrame&&MapTurnOn()&&MapTopDownOn()?4u:0u)|(MapTopDownOn()?8u:0u);
+    const uint32_t flags=overlay?(2u|32u):
+        (compassFrame?1u:0u)|(compassFrame&&MapTurnOn()&&MapTopDownOn()?4u:0u)|(MapTopDownOn()?8u:0u);
     // The full map: a square of `span` share pixels around the X, the zoom's remainder after the
     // game zoom this share was really drawn at (so a step landing a frame late never jumps).
     // The corner map keeps its own zoom, up to 4x.
@@ -7000,7 +7008,7 @@ bool CopyMap(reshade::api::command_queue* rq) {
             Say(line);
         }
     }
-    if(!mapBlit.Render(device.Get(),e.commands.Get(),src,e.images[e.index].texture,true,true,flags,float(wristHeading.bearing),1.f,
+    if(!blit.Render(device.Get(),e.commands.Get(),src,e.images[e.index].texture,!overlay,true,flags,float(wristHeading.bearing),overlay?OverlayMapOpacity():1.f,
                        fullMap?1.f:std::min(mapZoom.Zoom(),mapzoom::Max),span,search.reach,search.right,search.down)) {
         e.commands->Close();return false;
     }
@@ -7109,6 +7117,7 @@ void Capture(reshade::api::command_queue* rq,reshade::api::swapchain* swap) {
     // pass, or by turns from whichever eye this frame draws.
     const bool shared=eye==0||(pairDrawing&&turnFrame);
     if(shared&&!CopyMap(rq)) {mapSupported=false;mapEye.copied=false;Say("Frame menu map: copy unavailable; optional map suspended");}
+    if(shared&&!CopyMap(rq,true)) {overlayMapEye.copied=false;Say("Frame overlay map: copy unavailable this frame");}
     // The campfire: a copy refused this frame (the headset taken off and put back on) is this frame's
     // loss, not the session's - failed stays off for good, and the scene never came back (only the
     // menu's board, over SteamVR's own background).
@@ -7455,6 +7464,8 @@ void EndPair() {
         Check(pReleaseSwapchainImage(uiEye.chain,&release),"release journal");uiEye.acquired=false;}
     if(mapEye.acquired){XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
         if(!Check(pReleaseSwapchainImage(mapEye.chain,&release),"release menu map"))mapEye.copied=false;mapEye.acquired=false;}
+    if(overlayMapEye.acquired){XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+        if(!Check(pReleaseSwapchainImage(overlayMapEye.chain,&release),"release overlay map"))overlayMapEye.copied=false;overlayMapEye.acquired=false;}
     timing.releaseMs=Milliseconds()-releaseStart;
     XrCompositionLayerProjection projection{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
     std::array<XrCompositionLayerProjectionView,2> pv{{{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}}};
@@ -7527,6 +7538,13 @@ void EndPair() {
         layers[count++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&q);
     };
     const bool interactionVisible=layer&&!panelMode&&interactionInput.active&&interactionChain;
+    XrCompositionLayerQuad overlayMap{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    if(interactionVisible&&OverlayMapOn()&&overlayMapEye.copied&&!interactionOutput.wheel){
+        const auto q=Q(head.orientation);
+        const auto p=V(head.position)+math::Rotate(q,{0,0,-1.5f});
+        const float size=.85f*vrsettings::Read().values[settings::OverlayMapScale]*.01f;
+        motionQuad(overlayMap,XrPose({p,q}),size,size,{{0,0},{int32_t(mapSide),int32_t(mapSide)}},overlayMapEye.chain);
+    }
     if(interactionVisible&&interactionOutput.wheel&&interactionPaintValid&&interactionPaintContext==interaction::Context(
         interactionInput.snapshot,interactionOutput,interaction::Fresh(interactionInput.snapshot,interactionInput.session,interactionInput.at),controllerLabels))
         motionQuad(palette,palettePose,paletteWidth,paletteHeight,{{0,0},{768,768}},interactionChain);
@@ -8673,6 +8691,7 @@ void Shutdown(bool preserveResolution) {
     if(uiEye.chain&&pDestroySwapchain)pDestroySwapchain(uiEye.chain);uiEye={};journalMode=spatialMode=workspacePlaced=leatherMode=false;leatherShown=false;uiworld::ShowWorldBehindMenu(false);hud::UiFrame(false,false,0);uiSupported=false;uiBlit={};potionModels.Reset();potionScene={};
     elementalRenderer.Reset();elementalState.Reset();elementalScene={};elementalEffects.Reset();
     if(mapEye.chain&&pDestroySwapchain)pDestroySwapchain(mapEye.chain);mapEye={};mapSupported=false;mapBlit={};gamestate::MenuMap(false);hud::MenuMapCapture(false);
+    if(overlayMapEye.chain&&pDestroySwapchain)pDestroySwapchain(overlayMapEye.chain);overlayMapEye={};overlayMapBlit={};
     settingsModel.Close();settingsOpen=false;settingsInputGate.Suspend();settingsPainted={};settingsAtlasPending=settingsImageReady=false;
     settingsPaintRequest=0;settingsRequested={};
     bodyCalibration.Cancel();tCross.Reset();tCrossScan=false;tCrossAnswered=tCrossHostile=false;calibrationRelease={};calibrationPrompted=floorSpace=false;calibrationSession=0;calibrationPaintKey=calibrationRequestedKey=-1;

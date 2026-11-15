@@ -29,7 +29,7 @@ public:
     // in the render-target state; null before one. For tests.
     ID3D12Resource* Marker() const {return hero.Get();}
     bool Initialize(ID3D12Device* device,void (*log)(const char*));
-    // mapFlags (square map only): 1 heading arrow at bearing (radians, clockwise from map-up), 2 clear background, walls at wallAlpha, 4 the map turns with you
+    // mapFlags (square map only): 1 heading arrow at bearing (radians, clockwise from map-up), 2 clear background, walls at wallAlpha, 4 the map turns with you, 32 omit frame for a transparent overlay
     // zoom (square map only, >= 1): the map that much bigger about the hero; 1 fits it whole
     // mapSpan (square map only, > 0; Map view = Full map): a square of that many source pixels across the whole square around the hero's X, the arrow sized from the X; 0: the fit, zoomed
     // xReach (square map only, > 0; the full map): the X searched only that many source pixels each way from the source's center moved by xShiftRight, xShiftDown (wrist_full_map.h XSearchAt); 0: the corner map's wide search

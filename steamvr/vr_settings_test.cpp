@@ -1054,11 +1054,22 @@ int main(int argc,char** argv){
         Model u;Snapshot saved;saved.ready=true;saved.values[LeftHanded]=1;u.Open(saved);layout::Press(u,{Kind::Set,LeftHandedSticks,0,1},0);
         Check(u.Click({Kind::Apply}).changed==(ChangeMask{1}<<LeftHandedSticks),"with Left-handed saved, Apply saves only the sticks' switch");
     }
+    {
+        Check(Defaults()[OverlayMapEnabled]==0&&Defaults()[OverlayMapOpacity]==45&&Defaults()[OverlayMapScale]==100,
+              "overlay map starts off with 45 percent opacity and original size");
+        Check(Normalize(OverlayMapOpacity,-5)==0&&Normalize(OverlayMapOpacity,105)==100&&
+              Normalize(OverlayMapScale,0)==25&&Normalize(OverlayMapScale,250)==200,
+              "overlay map opacity and scale stay within supported bounds");
+        for(Key key:{OverlayMapEnabled,OverlayMapOpacity,OverlayMapScale}){
+            const auto* row=content::RowOf(key);
+            Check(row&&row->page==View::OverlayMap,"overlay controls have their own page");
+        }
+    }
     {   // Props have weight (prop_heft.h): On by default, a switch under Knock over small props, shown while it is on, saved alone
         Check(Defaults()[PropHeft]==1&&std::wstring(Definitions[PropHeft].section)==L"interactions"&&
               std::wstring(Definitions[PropHeft].key)==L"prop_heft"&&Definitions[PropHeft].min==0&&Definitions[PropHeft].max==1&&
-              Definitions[PropHeft].step==1&&HelpText(PropHeft)[0]!=0&&PropHeft<ChangeMask::Bits&&PropHeft==Count-1,
-              "Props have weight: On by default, [interactions] prop_heft Off / On, explained, its own change bit, appended last");
+              Definitions[PropHeft].step==1&&HelpText(PropHeft)[0]!=0&&PropHeft<ChangeMask::Bits&&OverlayMapOpacity==PropHeft+1,
+              "Props have weight: On by default, [interactions] prop_heft Off / On, explained, its own change bit, stable key order");
         const auto* row=content::RowOf(PropHeft);const auto* props=content::RowOf(PropPhysics);
         Check(row&&props&&!row->beside&&row->page==View::Physics&&row->kind==content::RowKind::Toggle&&std::strcmp(row->label,"Props have weight")==0&&
               row->section==props->section&&row->classes==content::AllClasses&&std::strlen(row->help)<=160,

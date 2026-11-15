@@ -3449,3 +3449,12 @@ commands without retries, and unchanged desktop routing. On 2026-10-14 the owner
 confirmed drinking works on Steam Frame / SteamVR (Steam edition, offline
 Paladin). Runtime logs confirmed the hidden belt owner changed from -1/type 6
 to the local player, followed by consumption of the exact captured mana potion.
+
+### Centered overlay map
+
+In **VR Settings > Interface > Overlay map**, turn **Overlay map** on and select
+**Apply** to show a transparent map centered in your view. It is off by default
+and uses settings rather than a controller gesture. **Overlay map opacity**
+defaults to 45% (0-100%, in 5% steps). **Overlay map scale** defaults to 100%
+(25-200%, in 5% steps); this changes the panel size, not the explored-map zoom.
+The wrist and held map remain available with their existing controls.

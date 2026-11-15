@@ -10,9 +10,12 @@ using Microsoft::WRL::ComPtr;
 static void Check(HRESULT hr,const char* what){if(FAILED(hr)){std::fprintf(stderr,"%s: %08lx\n",what,(unsigned long)hr);throw std::runtime_error(what);}}
 static float Half(uint16_t x){const int e=(x>>10)&31,m=x&1023;return (x&0x8000?-1.f:1.f)*std::ldexp(e?1.f+m/1024.f:m/1024.f,e?e-15:-14);}
 int main(int argc,char** argv){try {
-    bool blackBackground=false,typeless=false,squareMap=false,portrait=false,undim=false;
+    bool blackBackground=false,typeless=false,squareMap=false,portrait=false,undim=false,overlay=false;
+    float overlayAlpha=.45f;
     for(int i=1;i<argc;++i) {if(!std::strcmp(argv[i],"--typeless"))typeless=true;
         else if(!std::strcmp(argv[i],"--square-map"))squareMap=true;
+        else if(!std::strcmp(argv[i],"--overlay-map")){squareMap=true;overlay=true;}
+        else if(!std::strcmp(argv[i],"--faint"))overlayAlpha=.0035f;
         else if(!std::strcmp(argv[i],"--undim"))undim=true;
         else if(!std::strcmp(argv[i],"--portrait"))portrait=true;else blackBackground=true;}
     ComPtr<ID3D12Device> device;Check(D3D12CreateDevice(nullptr,D3D_FEATURE_LEVEL_11_0,IID_PPV_ARGS(&device)),"device");
@@ -68,7 +71,7 @@ int main(int argc,char** argv){try {
     D3D12_RESOURCE_BARRIER barrier{};barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Transition={source.Get(),D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE};
     commands->ResourceBarrier(1,&barrier);
-    if(!blit.Render(device.Get(),commands.Get(),source.Get(),target.Get(),blackBackground,squareMap,0,0,1.f,1.f,0.f,0.f,0.f,0.f,undim?band:nullptr))throw std::runtime_error("render");
+    if(!blit.Render(device.Get(),commands.Get(),source.Get(),target.Get(),blackBackground,squareMap,overlay?34u:0u,0,overlay?overlayAlpha:1.f,1.f,0.f,0.f,0.f,0.f,undim?band:nullptr))throw std::runtime_error("render");
     barrier.Transition={target.Get(),D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_COPY_SOURCE};commands->ResourceBarrier(1,&barrier);
     from.pResource=target.Get();from.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;from.SubresourceIndex=0;
     to.pResource=readback.Get();to.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;to.PlacedFootprint=outputFootprint;commands->CopyTextureRegion(&to,0,0,0,&from,nullptr);
@@ -77,8 +80,16 @@ int main(int argc,char** argv){try {
     HANDLE event=CreateEventW(nullptr,FALSE,FALSE,nullptr);Check(fence->SetEventOnCompletion(1,event),"completion");
     const auto wait=WaitForSingleObject(event,10000);CloseHandle(event);if(wait!=WAIT_OBJECT_0)throw std::runtime_error("GPU timeout");
     D3D12_RANGE range{0,SIZE_T(bytes)};Check(readback->Map(0,&range,&data),"map readback");
+    unsigned visible=0;
     bool correct=true;for(UINT y=0;y<tex.Height;++y)for(UINT x=0;x<tex.Width;++x){
         auto* out=reinterpret_cast<uint16_t*>(static_cast<char*>(data)+y*outputFootprint.Footprint.RowPitch)+x*4;
+        if(overlay){
+            const float alpha=Half(out[3]);
+            if(alpha<0||alpha>overlayAlpha+.0005f)throw std::runtime_error("overlay exceeds opacity");
+            if((x<2||y<2||x>=tex.Width-2||y>=tex.Height-2)&&alpha!=0)throw std::runtime_error("overlay has opaque frame or margins");
+            visible+=alpha>overlayAlpha*.1f;
+            continue;
+        }
         float want[4]{};
         if(!squareMap)std::memcpy(want,expected[y*sourceWidth+x],sizeof want);
         else {
@@ -117,6 +128,7 @@ int main(int argc,char** argv){try {
         // alpha, framing and the unfiltered menu retain the strict tolerance.
         for(int c=0;c<4;++c)if(std::abs(Half(out[c])-want[c])>(squareMap&&c<3?2.f/255:.0006f)){correct=false;std::printf("pixel %u,%u lane %d = %f expected %f\n",x,y,c,Half(out[c]),want[c]);}}
     readback->Unmap(0,&empty);if(!correct)throw std::runtime_error("converted pixels differ");
+    if(overlay&&!visible)throw std::runtime_error("overlay lost all map content");
     std::puts(undim?"Native UI GPU conversion passed: the menu's backdrop taken out, what is drawn over it unchanged":
               blackBackground?"Native UI GPU conversion passed: opaque black backing, unchanged artwork colors":"Native UI GPU conversion passed: orientation, SDR color, translucent edges, inverse alpha and clamping");return 0;
 }catch(const std::exception& e){std::fprintf(stderr,"%s\n",e.what());return 1;}}
